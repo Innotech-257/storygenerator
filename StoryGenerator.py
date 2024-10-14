@@ -1,52 +1,60 @@
-import streamlit as st
-
 import google.generativeai as genai
+import streamlit as st
+from gtts import gTTS
+import os
+import base64
 
-genai.configure( api_key = "AIzaSyAZQ04kkEhkil29VeRgutZ9SY_XvgdqzFQ" )
-generation_config = {
-    "temperature" : 0.9,
-    "top_p" : 1,
-    "top_k" : 1,
-    "max_output_tokens" : 2048,
-}
-safety_settings = [
-    { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
-    { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
-    { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
-    { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
-]
+# Function to generate audio from text
+def text_to_speech( text ):
+    tts = gTTS( text = text, lang = 'en' )
+    tts.save( "story.mp3" )
+    with open( "story.mp3", "rb" ) as audio_file:
+        audio_bytes = audio_file.read()
+    os.remove( "story.mp3" )
+    return audio_bytes
 
-model = genai.GenerativeModel(
-    model_name = "gemini-pro", generation_config = generation_config, safety_settings = safety_settings
-)
+# Function to create a download link for the audio
+def get_audio_download_link( audio_bytes ):
+    b64 = base64.b64encode( audio_bytes ).decode()
+    return f'<a href="data:audio/mp3;base64,{b64}" download="story.mp3">Download Audio</a>'
 
-st.title( "AI Story Generator" )
+# Streamlit app
+st.title( "Story Generator" )
 
-st.subheader( "What theme story do you want to listen to?" )
-theme = st.multiselect("Theme:", ["scary", "funny", "night time", "adventure", "action", "interesting", "horror", "sci-fi", "thriller"])
+# Configure Gemini API
+genai.configure( api_key = "AIzaSyA4O1-zyvh5PdWvQUt4hjTd1R5z6xI5A9w" )
+model = genai.GenerativeModel( 'gemini-pro' )
 
-st.subheader("What time of the day is it?")
-time = st.multiselect(
-    "Time of day:",
-    ["morning - 6am - 12pm", "afternoon - 1pm - 5pm", "evening - 6pm - 8pm", "night - 9pm - 11pm", "late night - 12pm - 5am"],
-)
+# Story Generator
+st.header( "Custom Story Generator" )
+theme = st.selectbox( "Select a theme", [ "Fantasy", "Sci-Fi", "Romance", "Adventure", "Mystery", "Thriller" ] )
+age_group = st.selectbox( "Select an age group", [ "Kids", "Tweens", "Teens", "Adults" ] )
+time_of_day = st.selectbox( "Select a time period", [ "midnight", "morning", "noon", "afternoon", "evening", "night" ] )
+length = st.slider( "Select the length of the story( in minutes )", 
+                    min_value = 1.0, 
+                    max_value = 30.0, 
+                    value = 5.0,
+                    step = 0.5 )
 
-st.subheader("How big is the audience?")
-size = st.multiselect("Audience size:", ["1 person", "2 person", "3 person", "4 person", "more than 4 people"])
+user_prompt = f"Tell me a {theme} story for {age_group}s that is {length} minutes long and takes place at {time_of_day}."
 
-st.subheader("How long is the story?")
-long = st.multiselect(
-    "Story length:", ["1 - 2 min", "3 - 5 min", "6 - 8 min", "9 - 11 min", "more than 11 min"]
-)
+if st.button( "Generate Story" ):
+    try:
+        response = model.generate_content( user_prompt )
+        story_text = response.text
+        st.write( story_text )
+        
+        # Create columns for the story text and the audio button
+        col1, col2 = st.columns( [ 0.9, 0.1 ] )
+        
+        with col1:
+            st.write( story_text )
+        
+        with col2:
+            audio_bytes = text_to_speech( story_text )
+            st.audio( audio_bytes, format = 'audio/mp3' )
+            st.markdown( get_audio_download_link( audio_bytes ), unsafe_allow_html = True )
+        
+    except Exception as e:
+        st.error( f"Sorry, the story could not be generated: {str( e )}" )
 
-st.subheader( "age of the audience" )
-age = st.multiselect( "Age:", [ "kids", "teens", "adults", "all ages"])
-
-st.header("Press generate to generate your story")
-generate = st.button("Generate")
-
-if generate:
-    prompt_parts = [ f"Create a story that is {long} and for {size} who are {age} the theme of the story is {theme} and the time of the day is {time}" ]
-    response = model.generate_content(prompt_parts)
-
-    st.text( response.text )
